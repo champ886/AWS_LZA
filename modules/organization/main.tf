@@ -1,8 +1,7 @@
 resource "aws_organizations_organization" "main" {
   aws_service_access_principals = [
     "cloudtrail.amazonaws.com",
-    "config.amazonaws.com",
-    "scp.amazonaws.com"
+    "config.amazonaws.com"
   ]
 
   feature_set = "ALL"

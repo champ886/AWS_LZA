@@ -1,0 +1,23 @@
+# Ignore the local terraform directory (it's huge!)
+.terraform/
+
+# Ignore your state files (they can contain secrets)
+*.tfstate
+*.tfstate.*
+
+# Ignore your sensitive variables
+*.tfvars
+*.tfvars.json
+
+# Ignore crash logs
+crash.log
+# Ignore override files (can be used to override resources locally)
+
+**/.terraform/*
+
+
+git rm -r --cached .terraform/
+git rm --cached *.tfstate
+git rm --cached *.tfvars
+git rm --cached crash.log
+git rm --cached **/.terraform/*
