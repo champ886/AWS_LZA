@@ -16,8 +16,4 @@ crash.log
 **/.terraform/*
 
 
-git rm -r --cached .terraform/
-git rm --cached *.tfstate
-git rm --cached *.tfvars
-git rm --cached crash.log
-git rm --cached **/.terraform/*
+
