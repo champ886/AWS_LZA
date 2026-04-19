@@ -1,1 +1,4 @@
-variable "target_id" {}
+variable "environment" {
+  description = "Environment name"
+  type        = string
+}

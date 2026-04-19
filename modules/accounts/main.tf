@@ -1,19 +1,25 @@
-resource "aws_organizations_account" "log_archive" {
-  name      = "log-archive"
-  email     = var.log_archive_email
+resource "aws_organizations_account" "workload_dev" {
+  name      = var.workload_account_name
+  email     = var.workload_account_email
+  role_name = "OrganizationAccountAccessRole"
+  parent_id = var.workload_ou_id
+
+  tags = {
+    Environment = var.environment
+    OU          = "Workload"
+    ManagedBy   = "Terraform"
+  }
+}
+
+resource "aws_organizations_account" "security" {
+  name      = var.security_account_name
+  email     = var.security_account_email
+  role_name = "OrganizationAccountAccessRole"
   parent_id = var.security_ou_id
-}
 
-resource "aws_organizations_account" "workload" {
-  name      = "workload"
-  email     = var.workload_email
-  parent_id = var.workloads_ou_id
-}
-
-output "log_archive_account_id" {
-  value = aws_organizations_account.log_archive.id
-}
-
-output "workload_account_id" {
-  value = aws_organizations_account.workload.id
+  tags = {
+    Environment = var.environment
+    OU          = "Security"
+    ManagedBy   = "Terraform"
+  }
 }

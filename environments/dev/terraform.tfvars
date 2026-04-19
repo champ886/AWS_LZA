@@ -1,5 +1,9 @@
-log_archive_email = "help@algorhythm.au"
-workload_email    = "admin@alogrhythm.au"
+aws_region         = "ap-southeast-2"
+environment        = "dev"
+org_id             = "o-mrik3s6w85"
+log_retention_days = 90
 
-log_bucket_name   = "org-cloudtrail-logs-ALGO-LZA-name"
-config_role_arn   = "arn:aws:iam::<ACCOUNT_ID>:role/aws-config-role"
+workload_account_name  = "dev-workload-account"
+workload_account_email = "aws-dev-workload@algorhythm.au"
+security_account_name  = "security-account"
+security_account_email = "aws-security@algorhythm.au"
