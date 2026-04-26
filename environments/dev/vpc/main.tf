@@ -1,31 +1,3 @@
-terraform {
-  required_version = ">= 1.5.0"
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
-provider "aws" {
-  alias  = "workload"
-  region = var.aws_region
-
-  assume_role {
-    role_arn = "arn:aws:iam::${var.workload_account_id}:role/OrganizationAccountAccessRole"
-  }
-}
-
-provider "aws" {
-  alias  = "security"
-  region = var.aws_region
-
-  assume_role {
-    role_arn = "arn:aws:iam::${var.security_account_id}:role/OrganizationAccountAccessRole"
-  }
-}
-
 module "vpc_workload" {
   source = "../../../modules/vpc"
 
