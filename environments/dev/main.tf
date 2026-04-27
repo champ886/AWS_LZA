@@ -34,5 +34,7 @@ module "scp" {
   environment = var.environment
   workload_ou_id = module.organization.workload_ou_id
   security_ou_id = module.organization.security_ou_id
+  approved_regions = var.approved_regions
+  
   depends_on = [module.organization]
 }

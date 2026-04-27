@@ -40,3 +40,9 @@ variable "security_account_email" {
   description = "Email address for the security AWS account"
   type        = string
 }
+
+variable "approved_regions" {
+  description = "List of approved AWS regions"
+  type        = list(string)
+  default     = ["ap-southeast-2, ap-southeast-4"]
+  }
