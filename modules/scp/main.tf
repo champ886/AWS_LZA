@@ -16,3 +16,13 @@ resource "aws_organizations_policy" "deny_root_access" {
     }]
   })
 }
+
+resource "aws_organizations_policy_attachment" "deny_root_workload" {
+  policy_id = aws_organizations_policy.deny_root_access.id
+  target_id = var.workload_ou_id
+}
+
+resource "aws_organizations_policy_attachment" "deny_root_security" {
+  policy_id = aws_organizations_policy.deny_root_access.id
+  target_id = var.security_ou_id
+}

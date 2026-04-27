@@ -32,6 +32,7 @@ module "logging" {
 module "scp" {
   source      = "../../modules/scp"
   environment = var.environment
-
+  workload_ou_id = module.organization.workload_ou_id
+  security_ou_id = module.organization.security_ou_id
   depends_on = [module.organization]
 }
