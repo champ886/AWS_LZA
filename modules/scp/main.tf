@@ -182,9 +182,9 @@ resource "aws_organizations_policy_attachment" "deny_regions_and_security_worklo
 # ATTACHMENTS - SECURITY OU
 # All accounts inside Security OU inherit these
 # -----------------------------------------------
-resource "aws_organizations_policy_attachment" "full_access_workload" {
+resource "aws_organizations_policy_attachment" "full_access_security" {
   policy_id = "p-FullAWSAccess"
-  target_id = var.workload_ou_id
+  target_id = var.security_ou_id
 }
 
 resource "aws_organizations_policy_attachment" "deny_root_and_org_security" {
