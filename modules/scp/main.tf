@@ -125,8 +125,13 @@ resource "aws_organizations_policy" "deny_regions_and_security" {
           "route53:*",
           "cloudfront:*",
           "support:*",
-          "organizations:*"
-        ]
+          "organizations:*",
+          "ec2:Describe*",              # ← allows console to load VPC pages
+          "ec2:GetAccount*",            # ← allows account attribute lookups
+          "billing:*",                  # ← allows billing console access
+          "cost-optimization-hub:*",    # ← allows cost explorer access
+          "account:*"                   # ← allows account settings access
+              ]
         Resource  = "*"
         Condition = {
           StringNotEquals = {

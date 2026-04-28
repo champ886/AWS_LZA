@@ -1,7 +1,5 @@
 # -----------------------------------------------
 # DEV WORKLOAD ACCOUNT ID
-# Used by dev VPC environment to assume role
-# into the dev workload account
 # -----------------------------------------------
 output "workload_dev_account_id" {
   description = "Account ID of the workload dev account"
@@ -10,8 +8,6 @@ output "workload_dev_account_id" {
 
 # -----------------------------------------------
 # PROD WORKLOAD ACCOUNT ID
-# Used by prod VPC environment to assume role
-# into the prod workload account
 # -----------------------------------------------
 output "workload_prod_account_id" {
   description = "Account ID of the workload prod account"
@@ -20,7 +16,6 @@ output "workload_prod_account_id" {
 
 # -----------------------------------------------
 # SECURITY ACCOUNT ID
-# Used by both dev and prod VPC environments
 # -----------------------------------------------
 output "security_account_id" {
   description = "Account ID of the security account"

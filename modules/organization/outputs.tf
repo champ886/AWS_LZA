@@ -1,28 +1,36 @@
 # -----------------------------------------------
-# DEV WORKLOAD ACCOUNT ID
-# Used by dev VPC environment to assume role
-# into the dev workload account
+# WORKLOAD OU ID
+# Used by accounts module to place accounts in
+# the correct OU and by scp module to attach policies
 # -----------------------------------------------
-output "workload_dev_account_id" {
-  description = "Account ID of the workload dev account"
-  value       = aws_organizations_account.workload_dev.id
+output "workload_ou_id" {
+  description = "ID of the Workload OU"
+  value       = aws_organizations_organizational_unit.workload.id
 }
 
 # -----------------------------------------------
-# PROD WORKLOAD ACCOUNT ID
-# Used by prod VPC environment to assume role
-# into the prod workload account
+# SECURITY OU ID
+# Used by accounts module and scp module
 # -----------------------------------------------
-output "workload_prod_account_id" {
-  description = "Account ID of the workload prod account"
-  value       = aws_organizations_account.workload_prod.id
+output "security_ou_id" {
+  description = "ID of the Security OU"
+  value       = aws_organizations_organizational_unit.security.id
 }
 
 # -----------------------------------------------
-# SECURITY ACCOUNT ID
-# Used by both dev and prod VPC environments
+# ORGANIZATION ID
+# Exposed for reference by other modules
 # -----------------------------------------------
-output "security_account_id" {
-  description = "Account ID of the security account"
-  value       = aws_organizations_account.security.id
+output "organization_id" {
+  description = "ID of the Organization"
+  value       = aws_organizations_organization.main.id
+}
+
+# -----------------------------------------------
+# ROOT ID
+# Top level parent of all OUs in the organization
+# -----------------------------------------------
+output "root_id" {
+  description = "ID of the Organization root"
+  value       = aws_organizations_organization.main.roots[0].id
 }
