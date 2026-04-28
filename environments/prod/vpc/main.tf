@@ -1,8 +1,7 @@
 # -----------------------------------------------
-# DEV WORKLOAD VPC
-# Deploys VPC into the dev workload account
-# providers block passes the workload alias which
-# assumes role into the dev workload account
+# PROD WORKLOAD VPC
+# Deploys VPC into the prod workload account
+# environment = prod used in all resource names
 # -----------------------------------------------
 module "vpc_workload" {
   source = "../../../modules/vpc"
@@ -20,10 +19,8 @@ module "vpc_workload" {
 }
 
 # -----------------------------------------------
-# DEV SECURITY VPC
-# Deploys VPC into the security account
-# Uses security provider alias to assume role
-# into the security account
+# PROD SECURITY VPC
+# Same security account used by dev and prod
 # -----------------------------------------------
 module "vpc_security" {
   source = "../../../modules/vpc"

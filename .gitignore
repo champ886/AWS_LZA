@@ -1,19 +1,29 @@
-# Ignore the local terraform directory (it's huge!)
+# -----------------------------------------------
+# TERRAFORM WORKING DIRECTORY
+# Never commit - auto generated on terraform init
+# -----------------------------------------------
 .terraform/
 
-# Ignore your state files (they can contain secrets)
+# -----------------------------------------------
+# LOCK FILE
+# Can cause version conflicts on CI pipelines
+# -----------------------------------------------
+.terraform.lock.hcl
+
+# -----------------------------------------------
+# TFVARS
+# Contains account IDs and sensitive emails
+# -----------------------------------------------
+terraform.tfvars
+
+# -----------------------------------------------
+# STATE FILES
+# These live in S3 not in git
+# -----------------------------------------------
 *.tfstate
-*.tfstate.*
+*.tfstate.backup
 
-# Ignore your sensitive variables
-*.tfvars
-*.tfvars.json
-
-# Ignore crash logs
-crash.log
-# Ignore override files (can be used to override resources locally)
-
-**/.terraform/*
-
-
-
+# -----------------------------------------------
+# SAVED PLAN FILES
+# -----------------------------------------------
+tfplan

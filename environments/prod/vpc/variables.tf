@@ -9,21 +9,21 @@ variable "aws_region" {
 
 # -----------------------------------------------
 # ENVIRONMENT
-# Fixed as dev for this directory
+# Fixed as prod for this directory
 # -----------------------------------------------
 variable "environment" {
   description = "Environment name"
   type        = string
-  default     = "dev"
+  default     = "prod"
 }
 
 # -----------------------------------------------
 # ACCOUNT IDS
-# Used in the assume role ARNs in providers.tf
-# Get these from AWS Organizations console or CLI
+# Prod uses a different workload account from dev
+# Security account is the same as dev
 # -----------------------------------------------
 variable "workload_account_id" {
-  description = "Dev workload account ID"
+  description = "Prod workload account ID"
   type        = string
 }
 
@@ -33,55 +33,53 @@ variable "security_account_id" {
 }
 
 # -----------------------------------------------
-# DEV WORKLOAD VPC CIDRS
-# Uses 10.0.x.x range
-# Must not overlap with security or prod VPCs
+# PROD WORKLOAD VPC CIDRS
+# Uses 10.2.x.x range
+# Different from dev 10.0.x.x to avoid overlap
 # -----------------------------------------------
 variable "workload_vpc_cidr" {
   description = "CIDR block for workload VPC"
   type        = string
-  default     = "10.0.0.0/16"
+  default     = "10.2.0.0/16"
 }
 
 variable "workload_public_subnet_cidrs" {
   description = "Public subnet CIDRs for workload VPC"
   type        = list(string)
-  default     = ["10.0.1.0/24", "10.0.2.0/24"]
+  default     = ["10.2.1.0/24", "10.2.2.0/24"]
 }
 
 variable "workload_private_subnet_cidrs" {
   description = "Private subnet CIDRs for workload VPC"
   type        = list(string)
-  default     = ["10.0.3.0/24", "10.0.4.0/24"]
+  default     = ["10.2.3.0/24", "10.2.4.0/24"]
 }
 
 # -----------------------------------------------
-# SECURITY VPC CIDRS
-# Uses 10.1.x.x range
-# Different from workload to allow future peering
+# PROD SECURITY VPC CIDRS
+# Uses 10.3.x.x range
 # -----------------------------------------------
 variable "security_vpc_cidr" {
   description = "CIDR block for security VPC"
   type        = string
-  default     = "10.1.0.0/16"
+  default     = "10.3.0.0/16"
 }
 
 variable "security_public_subnet_cidrs" {
   description = "Public subnet CIDRs for security VPC"
   type        = list(string)
-  default     = ["10.1.1.0/24", "10.1.2.0/24"]
+  default     = ["10.3.1.0/24", "10.3.2.0/24"]
 }
 
 variable "security_private_subnet_cidrs" {
   description = "Private subnet CIDRs for security VPC"
   type        = list(string)
-  default     = ["10.1.3.0/24", "10.1.4.0/24"]
+  default     = ["10.3.3.0/24", "10.3.4.0/24"]
 }
 
 # -----------------------------------------------
 # AVAILABILITY ZONES
-# Two AZs for basic high availability
-# Must match the length of subnet CIDR lists
+# Two AZs for prod high availability
 # -----------------------------------------------
 variable "availability_zones" {
   description = "Availability zones"

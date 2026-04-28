@@ -1,5 +1,19 @@
 # -----------------------------------------------
-# 1. DENY ROOT AND ORG CONTROLS (combines 3 SCPs)
+# PROVIDER REQUIREMENTS
+# -----------------------------------------------
+terraform {
+  required_providers {
+    aws = {
+      source = "hashicorp/aws"
+    }
+  }
+}
+
+# -----------------------------------------------
+# SCP 1 - ROOT AND ORG PROTECTION
+# Combines three related rules into one policy
+# AWS allows max 5 SCPs per OU so we consolidate
+# to leave slots available for future policies
 # -----------------------------------------------
 resource "aws_organizations_policy" "deny_root_and_org" {
   name        = "${var.environment}-deny-root-and-org"
@@ -10,21 +24,27 @@ resource "aws_organizations_policy" "deny_root_and_org" {
     Version = "2012-10-17"
     Statement = [
       {
+        # Block root user from all actions in any account
+        # Root bypasses IAM so SCP is the only way to restrict it
         Sid       = "DenyRootAccess"
         Effect    = "Deny"
         Action    = "*"
         Resource  = "*"
         Condition = {
-          StringLike = { "aws:PrincipalArn" = ["arn:aws:iam::*:root"] }
+          StringLike = {
+            "aws:PrincipalArn" = ["arn:aws:iam::*:root"]
+          }
         }
       },
       {
+        # Prevent accounts escaping the org and bypassing SCPs
         Sid      = "DenyLeaveOrg"
         Effect   = "Deny"
         Action   = "organizations:LeaveOrganization"
         Resource = "*"
       },
       {
+        # Prevent the guardrails themselves from being removed
         Sid    = "DenySCPChanges"
         Effect = "Deny"
         Action = [
@@ -40,7 +60,9 @@ resource "aws_organizations_policy" "deny_root_and_org" {
 }
 
 # -----------------------------------------------
-# 2. DENY AUDIT AND COMPLIANCE DISABLE (combines 2 SCPs)
+# SCP 2 - AUDIT AND COMPLIANCE PROTECTION
+# Prevents CloudTrail and Config from being
+# disabled which would remove audit visibility
 # -----------------------------------------------
 resource "aws_organizations_policy" "deny_audit_disable" {
   name        = "${var.environment}-deny-audit-disable"
@@ -51,6 +73,7 @@ resource "aws_organizations_policy" "deny_audit_disable" {
     Version = "2012-10-17"
     Statement = [
       {
+        # CloudTrail is the audit log of all AWS API activity
         Sid    = "DenyCloudTrailDisable"
         Effect = "Deny"
         Action = [
@@ -61,6 +84,7 @@ resource "aws_organizations_policy" "deny_audit_disable" {
         Resource = "*"
       },
       {
+        # Config tracks resource configuration changes for compliance
         Sid    = "DenyConfigDisable"
         Effect = "Deny"
         Action = [
@@ -76,7 +100,9 @@ resource "aws_organizations_policy" "deny_audit_disable" {
 }
 
 # -----------------------------------------------
-# 3. DENY REGIONS AND SECURITY DISABLE (combines 2 SCPs)
+# SCP 3 - REGION AND SECURITY SERVICE PROTECTION
+# Restricts which regions can be used and prevents
+# core security services from being disabled
 # -----------------------------------------------
 resource "aws_organizations_policy" "deny_regions_and_security" {
   name        = "${var.environment}-deny-regions-and-security"
@@ -87,6 +113,9 @@ resource "aws_organizations_policy" "deny_regions_and_security" {
     Version = "2012-10-17"
     Statement = [
       {
+        # Block all services in non-approved regions
+        # NotAction exempts global services like IAM and Route53
+        # which have no region and must always be accessible
         Sid    = "DenyNonApprovedRegions"
         Effect = "Deny"
         NotAction = [
@@ -106,6 +135,7 @@ resource "aws_organizations_policy" "deny_regions_and_security" {
         }
       },
       {
+        # GuardDuty and Security Hub are primary threat detection services
         Sid    = "DenySecurityDisable"
         Effect = "Deny"
         Action = [
@@ -123,6 +153,7 @@ resource "aws_organizations_policy" "deny_regions_and_security" {
 
 # -----------------------------------------------
 # ATTACHMENTS - WORKLOAD OU
+# All accounts inside Workload OU inherit these
 # -----------------------------------------------
 resource "aws_organizations_policy_attachment" "deny_root_and_org_workload" {
   policy_id = aws_organizations_policy.deny_root_and_org.id
@@ -141,6 +172,7 @@ resource "aws_organizations_policy_attachment" "deny_regions_and_security_worklo
 
 # -----------------------------------------------
 # ATTACHMENTS - SECURITY OU
+# All accounts inside Security OU inherit these
 # -----------------------------------------------
 resource "aws_organizations_policy_attachment" "deny_root_and_org_security" {
   policy_id = aws_organizations_policy.deny_root_and_org.id
