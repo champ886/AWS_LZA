@@ -127,9 +127,9 @@ resource "aws_organizations_policy" "deny_regions_and_security" {
           "support:*",
           "organizations:*",
           "ec2:*",                      # ← temporarily allow all EC2 to test
-          "billing:*",                  # ← allows billing console access
-          "cost-optimization-hub:*",    # ← allows cost explorer access
-          "account:*"                   # ← allows account settings access
+          "billing:*",                  
+          "cost-optimization-hub:*",    
+          "account:*"                   
               ]
         Resource  = "*"
         Condition = {
