@@ -126,8 +126,7 @@ resource "aws_organizations_policy" "deny_regions_and_security" {
           "cloudfront:*",
           "support:*",
           "organizations:*",
-          "ec2:Describe*",              # ← allows console to load VPC pages
-          "ec2:GetAccount*",            # ← allows account attribute lookups
+          "ec2:*",                      # ← temporarily allow all EC2 to test
           "billing:*",                  # ← allows billing console access
           "cost-optimization-hub:*",    # ← allows cost explorer access
           "account:*"                   # ← allows account settings access
