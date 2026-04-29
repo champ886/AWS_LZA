@@ -9,7 +9,6 @@ variable "aws_region" {
 
 # -----------------------------------------------
 # ENVIRONMENT
-# Fixed as dev for this directory
 # -----------------------------------------------
 variable "environment" {
   description = "Environment name"
@@ -18,24 +17,15 @@ variable "environment" {
 }
 
 # -----------------------------------------------
-# ACCOUNT IDS
-# Used in the assume role ARNs in providers.tf
-# Get these from AWS Organizations console or CLI
+# DEV WORKLOAD ACCOUNT ID
 # -----------------------------------------------
 variable "workload_account_id" {
   description = "Dev workload account ID"
   type        = string
 }
 
-variable "security_account_id" {
-  description = "Security account ID"
-  type        = string
-}
-
 # -----------------------------------------------
 # DEV WORKLOAD VPC CIDRS
-# Uses 10.0.x.x range
-# Must not overlap with security or prod VPCs
 # -----------------------------------------------
 variable "workload_vpc_cidr" {
   description = "CIDR block for workload VPC"
@@ -56,32 +46,7 @@ variable "workload_private_subnet_cidrs" {
 }
 
 # -----------------------------------------------
-# SECURITY VPC CIDRS
-# Uses 10.1.x.x range
-# Different from workload to allow future peering
-# -----------------------------------------------
-variable "security_vpc_cidr" {
-  description = "CIDR block for security VPC"
-  type        = string
-  default     = "10.1.0.0/16"
-}
-
-variable "security_public_subnet_cidrs" {
-  description = "Public subnet CIDRs for security VPC"
-  type        = list(string)
-  default     = ["10.1.1.0/24", "10.1.2.0/24"]
-}
-
-variable "security_private_subnet_cidrs" {
-  description = "Private subnet CIDRs for security VPC"
-  type        = list(string)
-  default     = ["10.1.3.0/24", "10.1.4.0/24"]
-}
-
-# -----------------------------------------------
 # AVAILABILITY ZONES
-# Two AZs for basic high availability
-# Must match the length of subnet CIDR lists
 # -----------------------------------------------
 variable "availability_zones" {
   description = "Availability zones"

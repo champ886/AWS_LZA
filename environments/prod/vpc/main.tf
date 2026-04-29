@@ -1,7 +1,6 @@
 # -----------------------------------------------
-# PROD WORKLOAD VPC
-# Deploys VPC into the prod workload account
-# environment = prod used in all resource names
+# PROD WORKLOAD VPC ONLY
+# Security VPC is managed by environments/shared/vpc
 # -----------------------------------------------
 module "vpc_workload" {
   source = "../../../modules/vpc"
@@ -15,24 +14,5 @@ module "vpc_workload" {
   vpc_cidr             = var.workload_vpc_cidr
   public_subnet_cidrs  = var.workload_public_subnet_cidrs
   private_subnet_cidrs = var.workload_private_subnet_cidrs
-  availability_zones   = var.availability_zones
-}
-
-# -----------------------------------------------
-# PROD SECURITY VPC
-# Same security account used by dev and prod
-# -----------------------------------------------
-module "vpc_security" {
-  source = "../../../modules/vpc"
-
-  providers = {
-    aws = aws.security
-  }
-
-  environment          = var.environment
-  account_name         = "security"
-  vpc_cidr             = var.security_vpc_cidr
-  public_subnet_cidrs  = var.security_public_subnet_cidrs
-  private_subnet_cidrs = var.security_private_subnet_cidrs
   availability_zones   = var.availability_zones
 }

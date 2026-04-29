@@ -1,30 +1,12 @@
 # -----------------------------------------------
-# WORKLOAD PROVIDER
-# Assumes role into the dev workload account
-# Terraform uses this to deploy VPC resources
-# into the workload account not the management account
+# WORKLOAD PROVIDER ONLY
+# Security provider removed - managed by shared/vpc
 # -----------------------------------------------
 provider "aws" {
   alias  = "workload"
   region = var.aws_region
 
   assume_role {
-    # OrganizationAccountAccessRole is auto created by AWS
-    # in every member account for cross account access
     role_arn = "arn:aws:iam::${var.workload_account_id}:role/OrganizationAccountAccessRole"
-  }
-}
-
-# -----------------------------------------------
-# SECURITY PROVIDER
-# Assumes role into the security account
-# Used to deploy VPC into the security account
-# -----------------------------------------------
-provider "aws" {
-  alias  = "security"
-  region = var.aws_region
-
-  assume_role {
-    role_arn = "arn:aws:iam::${var.security_account_id}:role/OrganizationAccountAccessRole"
   }
 }

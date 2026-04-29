@@ -1,8 +1,6 @@
 # -----------------------------------------------
-# DEV WORKLOAD VPC
-# Deploys VPC into the dev workload account
-# providers block passes the workload alias which
-# assumes role into the dev workload account
+# DEV WORKLOAD VPC ONLY
+# Security VPC is managed by environments/shared/vpc
 # -----------------------------------------------
 module "vpc_workload" {
   source = "../../../modules/vpc"
@@ -16,26 +14,5 @@ module "vpc_workload" {
   vpc_cidr             = var.workload_vpc_cidr
   public_subnet_cidrs  = var.workload_public_subnet_cidrs
   private_subnet_cidrs = var.workload_private_subnet_cidrs
-  availability_zones   = var.availability_zones
-}
-
-# -----------------------------------------------
-# DEV SECURITY VPC
-# Deploys VPC into the security account
-# Uses security provider alias to assume role
-# into the security account
-# -----------------------------------------------
-module "vpc_security" {
-  source = "../../../modules/vpc"
-
-  providers = {
-    aws = aws.security
-  }
-
-  environment          = var.environment
-  account_name         = "security"
-  vpc_cidr             = var.security_vpc_cidr
-  public_subnet_cidrs  = var.security_public_subnet_cidrs
-  private_subnet_cidrs = var.security_private_subnet_cidrs
   availability_zones   = var.availability_zones
 }

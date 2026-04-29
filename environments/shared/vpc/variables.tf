@@ -9,40 +9,44 @@ variable "aws_region" {
 
 # -----------------------------------------------
 # ENVIRONMENT
+# Fixed as shared for this directory
 # -----------------------------------------------
 variable "environment" {
   description = "Environment name"
   type        = string
-  default     = "prod"
+  default     = "shared"
 }
 
 # -----------------------------------------------
-# PROD WORKLOAD ACCOUNT ID
+# SECURITY ACCOUNT ID
+# The single security account shared by all envs
 # -----------------------------------------------
-variable "workload_account_id" {
-  description = "Prod workload account ID"
+variable "security_account_id" {
+  description = "Security account ID"
   type        = string
 }
 
 # -----------------------------------------------
-# PROD WORKLOAD VPC CIDRS
+# SECURITY VPC CIDRS
+# Uses 10.1.0.0/16 range
+# Must not overlap with dev or prod workload VPCs
 # -----------------------------------------------
-variable "workload_vpc_cidr" {
-  description = "CIDR block for workload VPC"
+variable "security_vpc_cidr" {
+  description = "CIDR block for shared security VPC"
   type        = string
-  default     = "10.2.0.0/16"
+  default     = "10.1.0.0/16"
 }
 
-variable "workload_public_subnet_cidrs" {
-  description = "Public subnet CIDRs for workload VPC"
+variable "security_public_subnet_cidrs" {
+  description = "Public subnet CIDRs for security VPC"
   type        = list(string)
-  default     = ["10.2.1.0/24", "10.2.2.0/24"]
+  default     = ["10.1.1.0/24", "10.1.2.0/24"]
 }
 
-variable "workload_private_subnet_cidrs" {
-  description = "Private subnet CIDRs for workload VPC"
+variable "security_private_subnet_cidrs" {
+  description = "Private subnet CIDRs for security VPC"
   type        = list(string)
-  default     = ["10.2.3.0/24", "10.2.4.0/24"]
+  default     = ["10.1.3.0/24", "10.1.4.0/24"]
 }
 
 # -----------------------------------------------
