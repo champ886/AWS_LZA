@@ -1,6 +1,5 @@
 # -----------------------------------------------
-# WORKLOAD PROVIDER ONLY
-# Security provider removed - managed by shared/vpc
+# WORKLOAD PROVIDER
 # -----------------------------------------------
 provider "aws" {
   alias  = "workload"
@@ -10,3 +9,4 @@ provider "aws" {
     role_arn = "arn:aws:iam::${var.workload_account_id}:role/OrganizationAccountAccessRole"
   }
 }
+

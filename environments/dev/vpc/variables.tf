@@ -53,3 +53,4 @@ variable "availability_zones" {
   type        = list(string)
   default     = ["ap-southeast-2a", "ap-southeast-2b"]
 }
+
