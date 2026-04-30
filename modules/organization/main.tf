@@ -19,7 +19,8 @@ resource "aws_organizations_organization" "main" {
   # Enable trusted AWS services to integrate with the organization
   aws_service_access_principals = [
     "cloudtrail.amazonaws.com", # allows org-wide CloudTrail
-    "config.amazonaws.com"      # allows org-wide AWS Config
+    "config.amazonaws.com",      # allows org-wide AWS Config
+     "access-analyzer.amazonaws.com"    # allows org-wide IAM Access Analyzer
   ]
 
   # ALL enables SCPs and all advanced org features

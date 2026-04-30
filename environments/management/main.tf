@@ -65,3 +65,17 @@ module "scp" {
 
   depends_on = [module.organization]
 }
+
+# -----------------------------------------------
+# IAM ACCESS ANALYZER MODULE
+# Free service — analyses all accounts in the org
+# Detects overly permissive IAM and resource policies
+# type = ORGANIZATION requires management account
+# -----------------------------------------------
+module "iam_analyzer" {
+  source        = "../../modules/iam-analyzer"
+  environment   = var.environment
+  analyzer_type = var.analyzer_type
+
+  depends_on = [module.organization]
+}
