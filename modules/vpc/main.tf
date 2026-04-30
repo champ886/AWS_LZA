@@ -1,7 +1,5 @@
 # -----------------------------------------------
 # PROVIDER REQUIREMENTS
-# Provider is passed in from the calling environment
-# allowing this module to deploy into different accounts
 # -----------------------------------------------
 terraform {
   required_providers {
@@ -13,8 +11,8 @@ terraform {
 
 # -----------------------------------------------
 # VPC
-# DNS support and hostnames are required for
-# services like ECS, RDS, and service discovery
+# DNS support and hostnames required for
+# services like ECS, RDS and service discovery
 # -----------------------------------------------
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
@@ -30,8 +28,7 @@ resource "aws_vpc" "main" {
 
 # -----------------------------------------------
 # INTERNET GATEWAY
-# Required for resources in public subnets
-# to send and receive internet traffic
+# Required for public subnet internet access
 # -----------------------------------------------
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
@@ -45,8 +42,7 @@ resource "aws_internet_gateway" "main" {
 
 # -----------------------------------------------
 # PUBLIC SUBNETS
-# One subnet per availability zone
-# map_public_ip_on_launch auto assigns public IPs
+# One per AZ with auto public IP assignment
 # -----------------------------------------------
 resource "aws_subnet" "public" {
   count                   = length(var.public_subnet_cidrs)
@@ -65,9 +61,7 @@ resource "aws_subnet" "public" {
 
 # -----------------------------------------------
 # PRIVATE SUBNETS
-# One subnet per availability zone
-# No direct internet access — protected from
-# inbound internet traffic by design
+# One per AZ with no direct internet access
 # -----------------------------------------------
 resource "aws_subnet" "private" {
   count             = length(var.private_subnet_cidrs)
@@ -85,8 +79,8 @@ resource "aws_subnet" "private" {
 
 # -----------------------------------------------
 # PUBLIC ROUTE TABLE
-# Routes all internet traffic to the IGW
-# Associated with all public subnets
+# Single shared table for all public subnets
+# Routes all internet traffic through the IGW
 # -----------------------------------------------
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
@@ -104,17 +98,19 @@ resource "aws_route_table" "public" {
 }
 
 # -----------------------------------------------
-# PRIVATE ROUTE TABLE
-# No internet route by default
-# Add a NAT gateway route here if outbound
-# internet access is needed from private subnets
+# PRIVATE ROUTE TABLES - ONE PER AZ
+# Separate route tables per AZ allows intra-AZ
+# routing over VPC peering connections
+# Peering routes added by peering module later
 # -----------------------------------------------
 resource "aws_route_table" "private" {
+  count  = length(var.availability_zones)
   vpc_id = aws_vpc.main.id
 
   tags = {
-    Name        = "${var.environment}-${var.account_name}-private-rt"
+    Name        = "${var.environment}-${var.account_name}-private-rt-${count.index + 1}"
     Environment = var.environment
+    AZ          = var.availability_zones[count.index]
     ManagedBy   = "Terraform"
   }
 }
@@ -122,7 +118,6 @@ resource "aws_route_table" "private" {
 # -----------------------------------------------
 # PUBLIC ROUTE TABLE ASSOCIATIONS
 # Links each public subnet to the public route table
-# Without this subnets use the default VPC route table
 # -----------------------------------------------
 resource "aws_route_table_association" "public" {
   count          = length(var.public_subnet_cidrs)
@@ -132,10 +127,12 @@ resource "aws_route_table_association" "public" {
 
 # -----------------------------------------------
 # PRIVATE ROUTE TABLE ASSOCIATIONS
-# Links each private subnet to the private route table
+# Each private subnet gets its own AZ route table
+# Subnet 1 → AZ-a route table
+# Subnet 2 → AZ-b route table
 # -----------------------------------------------
 resource "aws_route_table_association" "private" {
   count          = length(var.private_subnet_cidrs)
   subnet_id      = aws_subnet.private[count.index].id
-  route_table_id = aws_route_table.private.id
+  route_table_id = aws_route_table.private[count.index].id
 }
