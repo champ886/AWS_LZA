@@ -1,5 +1,7 @@
 # -----------------------------------------------
 # PROVIDER REQUIREMENTS
+# aws.workload required for EKS addon resources
+# which must run in the dev account not management
 # -----------------------------------------------
 terraform {
   required_providers {
@@ -20,11 +22,14 @@ terraform {
 
 # -----------------------------------------------
 # EKS CORE ADDONS — FREE — MANAGED BY AWS
+# Must use aws.workload provider to reach the
+# lean-dev cluster in account 435321828725
 # vpc-cni    — pod networking
 # coredns    — internal DNS resolution
 # kube-proxy — maintains network rules on nodes
 # -----------------------------------------------
 resource "aws_eks_addon" "vpc_cni" {
+  provider                    = aws.workload
   cluster_name                = var.cluster_name
   addon_name                  = "vpc-cni"
   resolve_conflicts_on_create = "OVERWRITE"
@@ -36,6 +41,7 @@ resource "aws_eks_addon" "vpc_cni" {
 }
 
 resource "aws_eks_addon" "coredns" {
+  provider                    = aws.workload
   cluster_name                = var.cluster_name
   addon_name                  = "coredns"
   resolve_conflicts_on_create = "OVERWRITE"
@@ -47,6 +53,7 @@ resource "aws_eks_addon" "coredns" {
 }
 
 resource "aws_eks_addon" "kube_proxy" {
+  provider                    = aws.workload
   cluster_name                = var.cluster_name
   addon_name                  = "kube-proxy"
   resolve_conflicts_on_create = "OVERWRITE"
@@ -60,9 +67,11 @@ resource "aws_eks_addon" "kube_proxy" {
 # -----------------------------------------------
 # CLUSTER AUTOSCALER IAM ROLE
 # IRSA scoped only to autoscaler service account
+# Uses workload provider for IAM in dev account
 # -----------------------------------------------
 resource "aws_iam_role" "cluster_autoscaler" {
-  name = "${var.cluster_name}-autoscaler-role"
+  provider = aws.workload
+  name     = "${var.cluster_name}-autoscaler-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -88,8 +97,9 @@ resource "aws_iam_role" "cluster_autoscaler" {
 }
 
 resource "aws_iam_role_policy" "cluster_autoscaler" {
-  name = "${var.cluster_name}-autoscaler-policy"
-  role = aws_iam_role.cluster_autoscaler.id
+  provider = aws.workload
+  name     = "${var.cluster_name}-autoscaler-policy"
+  role     = aws_iam_role.cluster_autoscaler.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -128,6 +138,8 @@ resource "aws_iam_role_policy" "cluster_autoscaler" {
 # Aggressively scales down idle nodes to save cost
 # 50% utilisation threshold triggers scale down
 # 5 minutes idle before node is removed
+# depends_on core addons — coredns must be
+# running before autoscaler can schedule pods
 # -----------------------------------------------
 resource "helm_release" "cluster_autoscaler" {
   name       = "cluster-autoscaler"
@@ -191,7 +203,12 @@ resource "helm_release" "cluster_autoscaler" {
     value = "300Mi"
   }
 
-  depends_on = [aws_iam_role_policy.cluster_autoscaler]
+  depends_on = [
+    aws_eks_addon.vpc_cni,
+    aws_eks_addon.coredns,
+    aws_eks_addon.kube_proxy,
+    aws_iam_role_policy.cluster_autoscaler
+  ]
 }
 
 # -----------------------------------------------
@@ -207,6 +224,12 @@ resource "kubernetes_namespace" "kubecost" {
       ManagedBy   = "Terraform"
     }
   }
+
+  depends_on = [
+    aws_eks_addon.vpc_cni,
+    aws_eks_addon.coredns,
+    aws_eks_addon.kube_proxy
+  ]
 }
 
 # -----------------------------------------------
@@ -220,6 +243,9 @@ resource "kubernetes_namespace" "kubecost" {
 # kubectl port-forward -n kubecost \
 #   svc/kubecost-cost-analyzer 9090:9090
 # Open: http://localhost:9090
+#
+# depends_on alb_controller — webhook must be
+# ready before kubecost services are created
 # -----------------------------------------------
 resource "helm_release" "kubecost" {
   name       = "kubecost"
@@ -228,19 +254,11 @@ resource "helm_release" "kubecost" {
   namespace  = kubernetes_namespace.kubecost.metadata[0].name
   version    = "1.108.0"
 
-  # -----------------------------------------------
-  # EMPTY TOKEN = FREE OPEN SOURCE TIER
-  # No signup, no credit card, no expiry
-  # -----------------------------------------------
   set {
     name  = "kubecostToken"
     value = ""
   }
 
-  # -----------------------------------------------
-  # BUNDLED PROMETHEUS SETTINGS
-  # 8Gi storage sufficient for small cluster
-  # -----------------------------------------------
   set {
     name  = "prometheus.server.persistentVolume.size"
     value = "8Gi"
@@ -266,10 +284,6 @@ resource "helm_release" "kubecost" {
     value = "1Gi"
   }
 
-  # -----------------------------------------------
-  # COST ANALYZER SETTINGS
-  # Main Kubecost component
-  # -----------------------------------------------
   set {
     name  = "cost-analyzer.resources.requests.cpu"
     value = "100m"
@@ -290,10 +304,6 @@ resource "helm_release" "kubecost" {
     value = "512Mi"
   }
 
-  # -----------------------------------------------
-  # AWS COST INTEGRATION
-  # Pulls real AWS pricing for accurate cost data
-  # -----------------------------------------------
   set {
     name  = "kubecostProductConfigs.clusterName"
     value = var.cluster_name
@@ -304,15 +314,23 @@ resource "helm_release" "kubecost" {
     value = var.aws_account_id
   }
 
-  depends_on = [kubernetes_namespace.kubecost]
+  depends_on = [
+    helm_release.alb_controller,
+    aws_eks_addon.vpc_cni,
+    aws_eks_addon.coredns,
+    aws_eks_addon.kube_proxy,
+    kubernetes_namespace.kubecost
+  ]
 }
 
 # -----------------------------------------------
 # ALB CONTROLLER IAM ROLE
 # IRSA scoped to alb controller service account
+# Uses workload provider for IAM in dev account
 # -----------------------------------------------
 resource "aws_iam_role" "alb_controller" {
-  name = "${var.cluster_name}-alb-controller-role"
+  provider = aws.workload
+  name     = "${var.cluster_name}-alb-controller-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -338,6 +356,7 @@ resource "aws_iam_role" "alb_controller" {
 }
 
 resource "aws_iam_policy" "alb_controller" {
+  provider    = aws.workload
   name        = "${var.cluster_name}-alb-controller-policy"
   description = "IAM policy for AWS Load Balancer Controller"
 
@@ -423,6 +442,7 @@ resource "aws_iam_policy" "alb_controller" {
 }
 
 resource "aws_iam_role_policy_attachment" "alb_controller" {
+  provider   = aws.workload
   role       = aws_iam_role.alb_controller.name
   policy_arn = aws_iam_policy.alb_controller.arn
 }
@@ -431,6 +451,8 @@ resource "aws_iam_role_policy_attachment" "alb_controller" {
 # ALB CONTROLLER HELM CHART
 # Manages ALB and NLB for Kubernetes ingress
 # Required to route external traffic into cluster
+# depends_on core addons — coredns must be
+# running for webhook service DNS to resolve
 # -----------------------------------------------
 resource "helm_release" "alb_controller" {
   name       = "aws-load-balancer-controller"
@@ -479,5 +501,10 @@ resource "helm_release" "alb_controller" {
     value = "256Mi"
   }
 
-  depends_on = [aws_iam_role_policy_attachment.alb_controller]
+  depends_on = [
+    aws_eks_addon.vpc_cni,
+    aws_eks_addon.coredns,
+    aws_eks_addon.kube_proxy,
+    aws_iam_role_policy_attachment.alb_controller
+  ]
 }
