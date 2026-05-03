@@ -6,6 +6,10 @@ terraform {
     aws = {
       source = "hashicorp/aws"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 }
 
@@ -76,8 +80,9 @@ resource "aws_security_group" "cluster" {
 
 # -----------------------------------------------
 # EKS CLUSTER
-# Private endpoint for security
-# Public endpoint for kubectl access from local machine
+# Private endpoint for internal communication
+# Public endpoint for kubectl access from laptop
+# Only 2 log types to keep CloudWatch costs lean
 # -----------------------------------------------
 resource "aws_eks_cluster" "main" {
   name     = var.cluster_name
@@ -93,8 +98,8 @@ resource "aws_eks_cluster" "main" {
   }
 
   # -----------------------------------------------
-  # ENABLED CLUSTER LOG TYPES
-  # Lean — only essential logs to keep CloudWatch costs low
+  # LEAN LOG TYPES
+  # api and audit only — avoids excess CloudWatch cost
   # -----------------------------------------------
   enabled_cluster_log_types = ["api", "audit"]
 
@@ -161,11 +166,11 @@ resource "aws_security_group" "nodes" {
   vpc_id      = var.vpc_id
 
   ingress {
-    from_port       = 0
-    to_port         = 0
-    protocol        = "-1"
-    self            = true
-    description     = "Allow all traffic between nodes"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    self        = true
+    description = "Allow all traffic between nodes"
   }
 
   ingress {
@@ -173,7 +178,7 @@ resource "aws_security_group" "nodes" {
     to_port         = 443
     protocol        = "tcp"
     security_groups = [aws_security_group.cluster.id]
-    description     = "Allow control plane to communicate with nodes"
+    description     = "Allow control plane to nodes on 443"
   }
 
   ingress {
@@ -181,7 +186,7 @@ resource "aws_security_group" "nodes" {
     to_port         = 65535
     protocol        = "tcp"
     security_groups = [aws_security_group.cluster.id]
-    description     = "Allow control plane to communicate with nodes"
+    description     = "Allow control plane to nodes on high ports"
   }
 
   egress {
@@ -202,10 +207,9 @@ resource "aws_security_group" "nodes" {
 
 # -----------------------------------------------
 # EKS NODE GROUP
-# Uses SPOT instances to cut cost by ~70%
-# Scales from min to max automatically via
-# Cluster Autoscaler deployed in eks-addons module
-# Nodes run in private subnets for security
+# SPOT capacity type saves ~70% vs on-demand
+# Nodes placed in private subnets only
+# Tags required for Cluster Autoscaler discovery
 # -----------------------------------------------
 resource "aws_eks_node_group" "main" {
   cluster_name    = aws_eks_cluster.main.name
@@ -213,7 +217,7 @@ resource "aws_eks_node_group" "main" {
   node_role_arn   = aws_iam_role.node_group.arn
   subnet_ids      = var.private_subnet_ids
   instance_types  = var.node_instance_types
-  capacity_type   = "SPOT"  # saves ~70% vs ON_DEMAND
+  capacity_type   = "SPOT"
 
   scaling_config {
     desired_size = var.node_desired_size
@@ -221,11 +225,6 @@ resource "aws_eks_node_group" "main" {
     max_size     = var.node_max_size
   }
 
-  # -----------------------------------------------
-  # UPDATE CONFIG
-  # Allows 1 node to be unavailable during updates
-  # Safe for 2+ node setup
-  # -----------------------------------------------
   update_config {
     max_unavailable = 1
   }
@@ -239,7 +238,6 @@ resource "aws_eks_node_group" "main" {
     Name        = "${var.cluster_name}-nodes"
     Environment = var.environment
     ManagedBy   = "Terraform"
-    # Required tag for Cluster Autoscaler
     "k8s.io/cluster-autoscaler/${var.cluster_name}" = "owned"
     "k8s.io/cluster-autoscaler/enabled"             = "true"
   }
@@ -255,6 +253,7 @@ resource "aws_eks_node_group" "main" {
 # OIDC PROVIDER
 # Enables IAM roles for service accounts (IRSA)
 # Required for Cluster Autoscaler and ALB controller
+# Avoids giving broad IAM permissions to all nodes
 # -----------------------------------------------
 data "tls_certificate" "cluster" {
   url = aws_eks_cluster.main.identity[0].oidc[0].issuer
