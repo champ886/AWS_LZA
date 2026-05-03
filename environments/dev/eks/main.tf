@@ -76,7 +76,11 @@ module "eks" {
 # -----------------------------------------------
 module "eks_addons" {
   source = "../../../modules/eks-addons"
-
+  providers = {
+    aws.workload = aws.workload    # ← pass workload provider
+    helm         = helm
+    kubernetes   = kubernetes
+  }
   cluster_name              = module.eks.cluster_name
   environment               = "dev"
   aws_region                = "ap-southeast-2"
