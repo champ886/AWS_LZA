@@ -1,151 +1,82 @@
-# AWS Landing Zone Accelerator — Terraform
+# EKS + VPC Endpoints + Kubecost — Setup Guide
 
-A production-ready AWS Landing Zone built with Terraform covering multi-account organisation structure, service control policies, VPC networking with cross-account peering, isolated state management, and continuous IAM policy analysis.
+A complete guide to deploying a lean, cost-optimised EKS cluster with private networking via VPC endpoints and real-time cost monitoring via Kubecost free tier.
 
 ---
 
 ## Architecture overview
 
 ```
-AWS Organization (o-mrik3s6w85) — ap-southeast-2
-├── Management account (501562869247)
-│   ├── AWS Config (compliance recording)
-│   ├── CloudWatch log group (/aws/management/lza-logs)
-│   ├── S3 log archive bucket (management-lza-log-archive-501562869247)
-│   ├── IAM Access Analyzer (org-wide, free)
-│   └── Terraform runs from here
-│
-├── Workload OU (ou-77xi-o55qljv4)
-│   ├── Dev account (435321828725)
-│   │   └── Dev VPC (10.0.0.0/16)
-│   │       ├── Public subnets  — 10.0.1.0/24, 10.0.2.0/24
-│   │       ├── Private AZ-a    — 10.0.3.0/24 · RT-1
-│   │       └── Private AZ-b    — 10.0.4.0/24 · RT-2
-│   │
-│   └── Prod account (774386608951)
-│       └── Prod VPC (10.2.0.0/16)
-│           ├── Public subnets  — 10.2.1.0/24, 10.2.2.0/24
-│           ├── Private AZ-a    — 10.2.3.0/24 · RT-1
-│           └── Private AZ-b    — 10.2.4.0/24 · RT-2
-│
-└── Security OU (ou-77xi-rozu2coh)
-    └── Security account (926634327336)
-        └── Shared VPC (10.1.0.0/16)
-            ├── Public subnets  — 10.1.1.0/24, 10.1.2.0/24
-            ├── Private AZ-a    — 10.1.3.0/24 · RT-1
-            └── Private AZ-b    — 10.1.4.0/24 · RT-2
+Dev workload account (435321828725)
+  └── Dev VPC (10.0.0.0/16)
+        ├── Public subnets      — 10.0.1.0/24, 10.0.2.0/24  (AZ-a + AZ-b)
+        ├── Private subnets     — 10.0.3.0/24, 10.0.4.0/24  (AZ-a + AZ-b)
+        ├── VPC endpoints
+        │     ├── EKS           — Interface ($7/month)
+        │     ├── ECR API       — Interface ($7/month)
+        │     ├── ECR DKR       — Interface ($7/month)
+        │     ├── STS           — Interface ($7/month)
+        │     ├── EC2           — Interface ($7/month)
+        │     ├── Autoscaling   — Interface ($7/month)
+        │     └── S3            — Gateway  (FREE)
+        └── EKS cluster (lean-dev)
+              ├── Control plane — Managed by AWS
+              ├── Node group    — 2x t3.medium SPOT (scales 1→5)
+              ├── Core addons   — vpc-cni, coredns, kube-proxy
+              ├── Cluster autoscaler
+              ├── AWS Load Balancer Controller
+              └── Kubecost      — Free open source tier
 ```
 
-Dev and prod workload VPCs each peer to the shared security VPC using per-AZ route tables for intra-AZ routing. Dev and prod have no direct peering between them.
-
 ---
 
-## What is deployed
+## Why VPC endpoints instead of a NAT gateway
 
-| Resource | Account | Cost |
-|---|---|---|
-| AWS Organizations + OUs | Management | Free |
-| Service Control Policies (3) | All OUs | Free |
-| FullAWSAccess policy attachment | All OUs | Free |
-| AWS Config recorder + IAM role | Management | ~$2–5/month |
-| CloudWatch log group (90 day retention) | Management | ~$0.50–2/month |
-| S3 log archive bucket (versioned) | Management | ~$0.01/month |
-| IAM Access Analyzer (org-wide) | Management | Free |
-| Dev VPC + subnets + IGW + route tables | Dev workload | Free |
-| Prod VPC + subnets + IGW + route tables | Prod workload | Free |
-| Shared security VPC + subnets + IGW | Security | Free |
-| VPC peering dev→security | Cross-account | Free |
-| VPC peering prod→security | Cross-account | Free |
+Worker nodes run in private subnets and need to reach AWS APIs to join the cluster and pull images. There are two ways to give them outbound access:
 
-**Estimated monthly cost: ~$3–8**
+| Approach | Monthly cost | Security | Traffic path |
+|---|---|---|---|
+| NAT Gateway | ~$32 | Medium — traffic hits internet | Private subnet → NAT → Internet → AWS |
+| VPC Endpoints | ~$42 | High — traffic never leaves AWS | Private subnet → Endpoint → AWS API |
+| Public subnets | Free | Low — nodes exposed to internet | Not recommended |
 
----
-
-## Service control policies
-
-Three SCPs are deployed and attached to both the Workload OU and Security OU:
-
-**SCP 1 — Root and org protection**
-- Blocks the root user from performing any action in any account
-- Prevents accounts from leaving the organization
-- Prevents SCPs themselves from being modified or deleted
-
-**SCP 2 — Audit and compliance protection**
-- Prevents CloudTrail from being stopped or deleted
-- Prevents AWS Config from being stopped or deleted
-
-**SCP 3 — Region and security service protection**
-- Blocks all AWS services outside ap-southeast-2
-- Exempts global services (IAM, STS, S3, Route53, CloudFront, EC2)
-- Prevents disabling future security services if added later
-
----
-
-## IAM Access Analyzer
-
-Deployed as `type = ORGANIZATION` from the management account — one analyzer covers all accounts in the org. Continuously monitors resource policies and raises findings when any resource is accessible from outside the organization.
-
-**What it scans:** S3 buckets · IAM roles · KMS keys · Lambda functions · SQS queues · Secrets Manager secrets
-
-**Where to view findings:** AWS Console → IAM → Access Analyzer
-
-**Cost:** Permanently free — no trial period, no expiry.
-
----
-
-## VPC peering design
+VPC endpoints keep all traffic inside the AWS private network. The kubelet on each worker node calls four groups of AWS APIs:
 
 ```
-Dev VPC (10.0.0.0/16) ──── peering ────► Shared security VPC (10.1.0.0/16)
-Prod VPC (10.2.0.0/16) ─── peering ────► Shared security VPC (10.1.0.0/16)
-Dev VPC ──────────────── no peering ──── Prod VPC
+1. Node registration    → EKS endpoint   → EKS control plane API
+2. Heartbeat            → EKS endpoint   → EKS control plane API
+3. Pull container image → ECR endpoints  → ECR registry + S3 (free)
+4. IAM token (IRSA)     → STS endpoint   → STS service
 ```
 
-Per-AZ route tables ensure traffic stays within the same availability zone across the peering connection, avoiding cross-AZ data transfer charges. DNS resolution is enabled across all peering connections.
+Without these endpoints nodes in private subnets have no outbound path and never join the cluster.
 
 ---
 
-## Terraform state backend
+## Prerequisites
 
-All state files are stored in S3 with DynamoDB locking:
+- Terraform >= 1.5.0
+- AWS CLI v2.7+ (required for EKS token v1beta1 support)
+- kubectl installed
+- Existing dev VPC deployed via `environments/dev/vpc`
+- Dev workload account `435321828725` accessible via `OrganizationAccountAccessRole`
 
-```
-tf-state-landing-zone-champ-001/
-  aws-lza/management/terraform.tfstate   — org, accounts, SCPs, Config, logging, analyzer
-  aws-lza/shared/vpc/terraform.tfstate   — shared security VPC
-  aws-lza/dev/vpc/terraform.tfstate      — dev workload VPC
-  aws-lza/prod/vpc/terraform.tfstate     — prod workload VPC
-  aws-lza/peering/terraform.tfstate      — VPC peering connections
-```
-
-Each environment has a completely isolated state file. Destroying one environment never affects another.
-
----
-
-## Deployment order
-
-Always deploy in this order — each layer depends on the one above it:
-
+### Verify AWS CLI version
 ```bash
-# 1. Foundation — org, accounts, SCPs, Config, logging, IAM analyzer
-cd environments/management
-terraform init && terraform apply -var-file="terraform.tfvars"
+aws --version
+# must show: aws-cli/2.x.x
 
-# 2. Shared security VPC — deployed once, used by all environments
-cd environments/shared/vpc
-terraform init && terraform apply -var-file="terraform.tfvars"
+# If still on v1 upgrade with:
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install --update
+```
 
-# 3. Dev workload VPC
-cd environments/dev/vpc
-terraform init && terraform apply -var-file="terraform.tfvars"
-
-# 4. Prod workload VPC
-cd environments/prod/vpc
-terraform init && terraform apply -var-file="terraform.tfvars"
-
-# 5. VPC peering — must run last, all VPCs must exist first
-cd environments/peering
-terraform init && terraform apply -var-file="terraform.tfvars"
+### Install kubectl
+```bash
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+kubectl version --client
 ```
 
 ---
@@ -154,57 +85,401 @@ terraform init && terraform apply -var-file="terraform.tfvars"
 
 ```
 environments/
-  management/           — org foundation, accounts, SCPs, Config, logging, IAM analyzer
-    backend.tf
-    main.tf
-    providers.tf
-    versions.tf
-    variables.tf
-    terraform.tfvars
-
-  shared/vpc/           — shared security VPC, deployed once
-  dev/vpc/              — dev workload VPC only
-  prod/vpc/             — prod workload VPC only
-  peering/              — VPC peering connections and routes
+  dev/
+    vpc/              ← VPC + VPC endpoints (deploy first)
+    eks/              ← EKS cluster + addons (deploy second)
 
 modules/
-  organization/         — AWS Org, OUs, trusted service principals
-  accounts/             — member AWS account creation
-  scp/                  — service control policies and attachments
-  config/               — AWS Config recorder and IAM role
-  logging/              — CloudWatch log group and S3 archive
-  vpc/                  — VPC, subnets, IGW, per-AZ route tables
-  vpc-peering/          — peering connection, auto-accept, routes, DNS
-  iam-analyzer/         — IAM Access Analyzer (org-wide)
+  vpc/                ← VPC, subnets, route tables, IGW
+  vpc-endpoints/      ← VPC interface and gateway endpoints
+  eks/                ← EKS cluster, node group, OIDC provider
+  eks-addons/         ← Core addons, autoscaler, ALB controller, Kubecost
 ```
 
 ---
 
-## Useful commands
+## Step 1 — Deploy VPC endpoints
+
+The VPC endpoints module is called from inside `environments/dev/vpc` and deploys alongside the VPC. If the VPC already exists, just apply the endpoints module:
 
 ```bash
-# Check current state of all resources
-terraform show
+cd ~/terraform-and-eks/AWS_LZA/environments/dev/vpc
 
-# List all resources Terraform is managing
-terraform state list
+# Apply only the endpoints module if VPC already exists
+terraform apply \
+  -target=module.vpc_endpoints_workload \
+  -var-file="terraform.tfvars"
+```
 
-# Preview changes without applying
-terraform plan -var-file="terraform.tfvars"
+### What gets created
 
-# Format all .tf files
-terraform fmt
+| Resource | Type | Purpose |
+|---|---|---|
+| `aws_vpc_endpoint.eks` | Interface | Kubelet → control plane |
+| `aws_vpc_endpoint.ecr_api` | Interface | ECR authentication |
+| `aws_vpc_endpoint.ecr_dkr` | Interface | Container image pull |
+| `aws_vpc_endpoint.sts` | Interface | IRSA token generation |
+| `aws_vpc_endpoint.ec2` | Interface | Node registration |
+| `aws_vpc_endpoint.autoscaling` | Interface | Cluster autoscaler scaling |
+| `aws_vpc_endpoint.s3` | Gateway | ECR image layer pull (free) |
+| `aws_security_group.vpc_endpoints` | Security group | Allow 443 from VPC CIDR only |
 
-# Destroy a specific environment only
+### Verify endpoints are active
+
+```bash
+# Assume role into dev account first
+eval $(aws sts assume-role \
+  --role-arn arn:aws:iam::435321828725:role/OrganizationAccountAccessRole \
+  --role-session-name dev-session \
+  --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+  --output text | \
+  awk '{print "export AWS_ACCESS_KEY_ID="$1"\nexport AWS_SECRET_ACCESS_KEY="$2"\nexport AWS_SESSION_TOKEN="$3}')
+
+aws ec2 describe-vpc-endpoints \
+  --region ap-southeast-2 \
+  --filters Name=vpc-id,Values=$(aws ec2 describe-vpcs \
+    --filters Name=cidr,Values=10.0.0.0/16 \
+    --query 'Vpcs[0].VpcId' \
+    --output text) \
+  --query 'VpcEndpoints[*].[ServiceName,State]' \
+  --output table
+
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+```
+
+All endpoints should show `available`.
+
+---
+
+## Step 2 — Deploy EKS cluster
+
+```bash
+cd ~/terraform-and-eks/AWS_LZA/environments/dev/eks
+
+terraform init
+
+# Apply EKS cluster and node group first
+# Addons need the cluster to be ACTIVE before installing
+terraform apply \
+  -target=module.eks \
+  -var-file="terraform.tfvars"
+```
+
+### Verify cluster is ACTIVE before continuing
+
+```bash
+eval $(aws sts assume-role \
+  --role-arn arn:aws:iam::435321828725:role/OrganizationAccountAccessRole \
+  --role-session-name dev-session \
+  --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+  --output text | \
+  awk '{print "export AWS_ACCESS_KEY_ID="$1"\nexport AWS_SECRET_ACCESS_KEY="$2"\nexport AWS_SESSION_TOKEN="$3}')
+
+aws eks describe-cluster \
+  --name lean-dev \
+  --region ap-southeast-2 \
+  --query 'cluster.status' \
+  --output text
+# must return: ACTIVE
+
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+```
+
+---
+
+## Step 3 — Configure kubectl
+
+```bash
+eval $(aws sts assume-role \
+  --role-arn arn:aws:iam::435321828725:role/OrganizationAccountAccessRole \
+  --role-session-name dev-session \
+  --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+  --output text | \
+  awk '{print "export AWS_ACCESS_KEY_ID="$1"\nexport AWS_SECRET_ACCESS_KEY="$2"\nexport AWS_SESSION_TOKEN="$3}')
+
+aws eks update-kubeconfig \
+  --name lean-dev \
+  --region ap-southeast-2
+
+# Verify nodes are Ready
+kubectl get nodes
+# should show 2 nodes with STATUS = Ready
+
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+```
+
+---
+
+## Step 4 — Deploy EKS addons
+
+Deploy in strict order to avoid dependency issues:
+
+```bash
+cd ~/terraform-and-eks/AWS_LZA/environments/dev/eks
+
+# Core addons first — coredns must be running before Helm charts install
+terraform apply \
+  -target=module.eks_addons.aws_eks_addon.vpc_cni \
+  -target=module.eks_addons.aws_eks_addon.coredns \
+  -target=module.eks_addons.aws_eks_addon.kube_proxy \
+  -var-file="terraform.tfvars"
+```
+
+Verify core addons are running:
+```bash
+eval $(aws sts assume-role \
+  --role-arn arn:aws:iam::435321828725:role/OrganizationAccountAccessRole \
+  --role-session-name dev-session \
+  --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+  --output text | \
+  awk '{print "export AWS_ACCESS_KEY_ID="$1"\nexport AWS_SECRET_ACCESS_KEY="$2"\nexport AWS_SESSION_TOKEN="$3}')
+
+kubectl get pods -n kube-system
+# coredns pods should be Running
+
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+```
+
+Deploy ALB controller next:
+```bash
+terraform apply \
+  -target=module.eks_addons.helm_release.alb_controller \
+  -var-file="terraform.tfvars"
+```
+
+Deploy everything else (autoscaler + Kubecost):
+```bash
+terraform apply -var-file="terraform.tfvars"
+```
+
+---
+
+## Step 5 — Verify full deployment
+
+```bash
+eval $(aws sts assume-role \
+  --role-arn arn:aws:iam::435321828725:role/OrganizationAccountAccessRole \
+  --role-session-name dev-session \
+  --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+  --output text | \
+  awk '{print "export AWS_ACCESS_KEY_ID="$1"\nexport AWS_SECRET_ACCESS_KEY="$2"\nexport AWS_SESSION_TOKEN="$3}')
+
+# Check all nodes are Ready
+kubectl get nodes
+
+# Check all pods across all namespaces
+kubectl get pods -A
+
+# Check Kubecost namespace
+kubectl get pods -n kubecost
+
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+```
+
+---
+
+## Accessing Kubecost
+
+Kubecost runs inside the cluster. Access the dashboard via port-forward:
+
+```bash
+eval $(aws sts assume-role \
+  --role-arn arn:aws:iam::435321828725:role/OrganizationAccountAccessRole \
+  --role-session-name dev-session \
+  --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+  --output text | \
+  awk '{print "export AWS_ACCESS_KEY_ID="$1"\nexport AWS_SECRET_ACCESS_KEY="$2"\nexport AWS_SESSION_TOKEN="$3}')
+
+kubectl port-forward \
+  -n kubecost \
+  svc/kubecost-cost-analyzer 9090:9090
+```
+
+Then open `http://localhost:9090` in your browser.
+
+### What Kubecost shows you
+
+| View | What you see |
+|---|---|
+| Cost allocation | Spend per namespace, deployment, pod |
+| Efficiency | CPU and memory utilisation per pod |
+| Savings | Right-sizing recommendations |
+| Forecast | Projected monthly spend at current usage |
+| Cluster health | Pod restarts, OOM kills, resource pressure |
+
+### Kubecost free tier limits
+
+```
+✅ Cost per namespace, deployment, pod
+✅ Right-sizing recommendations
+✅ 15 days of cost history
+✅ Single cluster — sufficient for lean-dev
+✅ No credit card, no expiry, no signup
+❌ Multi-cluster view (paid)
+❌ SSO / SAML (paid)
+❌ More than 15 days history (paid)
+```
+
+---
+
+## Cost breakdown and savings
+
+### Monthly cost with VPC endpoints
+
+| Resource | Cost |
+|---|---|
+| EKS control plane | $73.00 |
+| 2x t3.medium SPOT nodes | ~$20.00 |
+| VPC endpoint — EKS (Interface) | $7.20 |
+| VPC endpoint — ECR API (Interface) | $7.20 |
+| VPC endpoint — ECR DKR (Interface) | $7.20 |
+| VPC endpoint — STS (Interface) | $7.20 |
+| VPC endpoint — EC2 (Interface) | $7.20 |
+| VPC endpoint — Autoscaling (Interface) | $7.20 |
+| VPC endpoint — S3 (Gateway) | FREE |
+| Kubecost | FREE |
+| Cluster autoscaler | FREE |
+| **Total** | **~$136/month** |
+
+### Savings vs common alternatives
+
+| Alternative setup | Monthly cost | Difference |
+|---|---|---|
+| EKS + NAT Gateway + on-demand nodes | ~$230 | $94 more |
+| EKS + NAT Gateway + spot nodes | ~$165 | $29 more |
+| EKS + VPC endpoints + spot nodes (this setup) | ~$136 | baseline |
+| EKS + public subnets + spot (not recommended) | ~$93 | $43 less but insecure |
+
+### Spot instance savings breakdown
+
+```
+t3.medium on-demand price:  $0.0464/hour = ~$34/month per node
+t3.medium spot price:       ~$0.014/hour = ~$10/month per node
+Saving per node:            ~$24/month
+Saving for 2 nodes:         ~$48/month
+Saving percentage:          ~70%
+```
+
+### Autoscaler savings
+
+The cluster autoscaler scales nodes down to 1 when idle using aggressive settings:
+
+```hcl
+scale-down-utilization-threshold = 0.5   # scale down if below 50% used
+scale-down-delay-after-add       = 5m    # wait 5 mins after scaling up
+scale-down-unneeded-time         = 5m    # remove after 5 mins idle
+```
+
+If your cluster sits idle for 8 hours overnight and weekends (~72 hours/week):
+
+```
+Idle saving: 1 node removed × $0.014/hour × 72 hours = ~$1/week = ~$4/month
+Annual idle saving: ~$48/year from autoscaler alone
+```
+
+### CloudWatch log savings
+
+Only two log types enabled instead of all five:
+
+```hcl
+enabled_cluster_log_types = ["api", "audit"]
+# NOT enabled: authenticator, controllerManager, scheduler
+```
+
+```
+CloudWatch Logs ingestion: $0.50 per GB
+Typical 5-log cluster:     ~$8/month
+2-log lean setup:          ~$3/month
+Saving:                    ~$5/month = ~$60/year
+```
+
+---
+
+## Troubleshooting
+
+### Nodes not joining cluster
+```bash
+# Check endpoints are available
+kubectl get endpoints -n kube-system
+
+# Check node logs
+kubectl describe node <node-name>
+```
+
+Most common cause is VPC endpoints not yet active — they can take 2-3 minutes to show `available`.
+
+### Kubecost pods not starting
+```bash
+kubectl describe pod -n kubecost -l app=cost-analyzer
+```
+
+Check the pod has enough memory. Kubecost needs ~512Mi on at least one node.
+
+### ALB controller webhook blocking installs
+```bash
+# List webhooks
+kubectl get mutatingwebhookconfigurations
+
+# Delete stuck webhook if present
+kubectl delete mutatingwebhookconfiguration aws-load-balancer-webhook
+```
+
+Then re-run `terraform apply -var-file="terraform.tfvars"`.
+
+### kubectl connecting to localhost:8080
+```bash
+# kubeconfig not set — run update-kubeconfig after assuming role
+eval $(aws sts assume-role \
+  --role-arn arn:aws:iam::435321828725:role/OrganizationAccountAccessRole \
+  --role-session-name dev-session \
+  --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+  --output text | \
+  awk '{print "export AWS_ACCESS_KEY_ID="$1"\nexport AWS_SECRET_ACCESS_KEY="$2"\nexport AWS_SESSION_TOKEN="$3}')
+
+aws eks update-kubeconfig --name lean-dev --region ap-southeast-2
+```
+
+---
+
+## Destroy order
+
+Always destroy in reverse deploy order:
+
+```bash
+# Step 1 — EKS cluster and addons
+cd environments/dev/eks
+terraform destroy -var-file="terraform.tfvars"
+
+# Step 2 — VPC endpoints and VPC
+cd environments/dev/vpc
 terraform destroy -var-file="terraform.tfvars"
 ```
 
+To destroy endpoints only without touching the VPC:
+```bash
+cd environments/dev/vpc
+terraform destroy \
+  -target=module.vpc_endpoints_workload \
+  -var-file="terraform.tfvars"
+```
+
 ---
 
-## Security notes
+## Adding prod EKS in future
 
-- `terraform.tfvars` files are excluded by `.gitignore` — never commit them as they contain account IDs and email addresses
-- The `OrganizationAccountAccessRole` created in each member account allows the management account to assume role into member accounts for Terraform deployments
-- SCPs are enforced at the OU level — all accounts inside an OU inherit all attached SCPs automatically
-- The `FullAWSAccess` policy is attached at the OU level as the baseline allow — SCPs then deny specific actions on top of it
-- VPC peering uses `auto_accept = true` which is safe as both accounts are within the same AWS Organization
+Copy the dev EKS environment and change three values:
+
+```bash
+cp -r environments/dev/eks environments/prod/eks
+```
+
+Update `environments/prod/eks/terraform.tfvars`:
+```hcl
+workload_account_id = "774386608951"    # prod account
+workload_vpc_cidr   = "10.2.0.0/16"    # prod VPC CIDR
+cluster_name        = "lean-prod"       # prod cluster name
+```
+
+Update `environments/prod/eks/providers.tf` — replace `435321828725` with `774386608951`.
+
+All modules stay unchanged — they are fully reusable.
