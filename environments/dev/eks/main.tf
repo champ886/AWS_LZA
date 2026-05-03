@@ -55,7 +55,7 @@ module "eks" {
 
   cluster_name                         = "lean-dev"
   environment                          = "dev"
-  kubernetes_version                   = "1.29"
+  kubernetes_version                   = "1.32"  
   vpc_id                               = data.aws_vpc.dev_workload.id
   private_subnet_ids                   = data.aws_subnets.private.ids
   public_subnet_ids                    = data.aws_subnets.public.ids
