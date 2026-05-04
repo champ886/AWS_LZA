@@ -13,8 +13,8 @@ variable "aws_region" {
   type        = string
 }
 
-variable "aws_account_id" {
-  description = "AWS account ID for Kubecost pricing"
+variable "vpc_id" {
+  description = "VPC ID where the cluster runs"
   type        = string
 }
 
